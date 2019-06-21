@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: configsvr
+  namespace: mongo
+  labels:
+    name: configsvr
+spec:
+  ports:
+  - port: 27019
+    targetPort: 27019
+  clusterIP: None
+  selector:
+    role: configsvr
+---
+apiVersion: apps/v1beta2
+kind: StatefulSet
+metadata:
+  name: configsvr
+  namespace: mongo
+spec:
+  selector:
+    matchLabels:
+      role: configsvr
+  serviceName: configsvr
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        role: configsvr
+        tier: configsvr
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: role
+                  operator: In
+                  values:
+                  - configsvr
+              topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: configsvr-container
+          image: mongo
+          command:
+            - "mongod"
+            - "--port"
+            - "27019"
+            - "--replSet"
+            - "configsvr"
+            - "--bind_ip"
+            - "0.0.0.0"
+            - "--configsvr"
+            - "--dbpath"
+            - "/mongo-disk"
+          ports:
+            - containerPort: 27019
+          volumeMounts:
+            - name: data
+              mountPath: /mongo-disk
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      namespace: mongo
+      annotations:
+        volume.beta.kubernetes.io/storage-class: "nfs-client"
+    spec:
+      accessModes: [ "ReadWriteMany" ]
+      resources:
+        requests:
+          storage: 1Gi
